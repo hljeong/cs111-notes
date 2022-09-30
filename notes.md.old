@@ -1,0 +1,154 @@
+# 9.22 0th
+```sh
+$ ls -l big
+-rw-r--r-- 1 eggert faculty 9223382036854775000 Sep 22 11:31 big
+$ grep x big
+$ time grep x big
+real 0m0.009s
+```
+- `grep` scans at $10^21$ bytes/s (8 Zb/s) searching for an existent line in the file
+- so it has to be doing smth other than sequentially searching thru the file
+- "grep cheats"
+  - "i know it cheats cuz i put the code in it" - eggert 2022
+- "i hope you gain the intuition to know when is it ok to cheat and when is it not"
+
+- paul eggert
+- https://web.cs.ucla.edu/classes/fall22/cs111
+- prereqs: cs32  <- c++, algs, data structurues      \         / cs118 networking
+             33  <- computer org, machine code, etc. |-> cs111 - ...
+             35l <- shell, python, scripting, ...    /         \ ...
+- cs131 programming languages
+- cs151b architecture
+- textbooks
+  - ad os 3ep  (2018)
+  - sk systems (2009)
+
+## whats a system
+- *oxford english dictionary* (1928)
+  - i.  an organized or connected group of objects
+  - ii. a set of principles, etc.; a scheme, method
+  - from ancient greek $\sigma\iota\sigma\tau\eta\mu\alpha$(roots, "set up w")
+- *principle of computer science design: an introduction* (2009)
+  - smth that ops in an env and the boundary betw the 2 is called the interface
+    - interface v important
+    - system built from a lot of subsystems
+    - standard design: decompose big system
+    - often time its useful to have multiple views of the same system
+      - sometimes we can look at the system from a diff viewpoint and come up w a completely different set of subsystems
+
+## operating system
+- *american heritage dictionary* (2000)
+  - software designed to control the hardware of a specific data processing system in order to allow users and application programs to make use of it
+    - claims os is very system dependent, not true
+- *encarta* (2007)
+  - master control program in a computer
+- *wikipdeia* (2016/8)
+  - system software that manages computer, hardware, software resources, and provides common services for computer programs
+
+## goals of an operating system
+- protection (of apps, data, ...)
+- performance (from users view)
+- utilization (from check-writers view)
+- robustness
+  - does this operating system do well when given problems out of the ordinary
+- flexibility
+- simplicity / ease of use
+- portability w diff hardware
+- scalability
+- safety
+
+## what are our main tools?
+- abstraction + modularity
+  - abstraction: look at the big pic of the system from a particular viewpoint and discard details to understand everything abt that aspect of the system
+  - modularity: splitting up a big problem into little problems
+    - since the diff in writing a program scales worse than linearly, 
+  - interface vs implementation
+  - mechanisms vs policy
+    - policy: high level concept in which u say what u want
+      - "i want my interactive processes to have higher priority than background batches"
+    - mechanism: how u actually get that stuff to work
+- measurements + monitoring
+  - measurements: measure how well ur system is working
+    - performance + correctness
+  - monitoring: monitor measurements, do smth w them
+- *operating systems: three easy pieces*: main problems in os
+  - virtualization: how to build efficient + effective virtual systems
+  - concurrency: interacting, simultaneous tasks
+  - persistence: data survive failures in hardware, software
+  - more
+    - security
+
+## a bad os interface
+```c
+char* readline(int fd);
+```
+- assumes infinite resources
+
+
+
+# 9.23 0f
+- kernel: lowest level of the os
+  - decides what resources are available to apps (thus protecting the system)
+  - provides layer of abstraction so that apps dont have to deal w hardware
+┌─────────────────────────────────────┐
+│                                     │
+│             applications            │
+│                                     │
+└─────────────────▲───────────────────┘
+                  │
+┌─────────────────▼───────────────────┐
+│                                     │
+│               kernel                │
+│                                     │
+└─────▲───────────▲─────────────▲─────┘
+      │           │             │
+┌─────▼────┐┌─────▼──────┐┌─────▼─────┐
+│    cpu   ││   memory   ││  devices  │
+└──────────┘└────────────┘└─────────── 
+
+## kernel modules
+- are pieces of code that can be loaded and unloaded into the kernel upon demand
+- they extend the functionality of the kernel without the need to reboot the system
+- why not just add all the new functionalities into the kernel image
+  - would be bloated
+  - security implications
+- modules are stored in `/usr/lib/modeuls/kernel_release`
+- to see what kernel modules are currently loaded use
+```sh
+lsmod
+```
+```sh
+cat /proc/modules
+```
+- example
+```c
+#include <linux/module.h> /* needed by all modules */
+
+#include <linux/kernel.h> /* needed for KERN_INFO */
+
+int init_module(void) {
+  printk(KERN_INFO "hello world 1.\n");
+  return 0;
+}
+
+void cleanup_module(void) {
+  printk(KERN_INFO "goodbye world 1.\n");
+}
+```
+- `printk`
+  - was not meant to communicate info to user
+- to load a module: `sudo insmod <module_name> [args]`
+```sh
+sudo insmod proc_count.ko
+```
+- to unload a module: `sudo rmmod <module_name>`
+```sh
+sudo rmmod proc_count
+```
+
+# 9.27 1t
+
+## simple os architecture
+- user mode: code
+- kernel mode: you can execute instructions here
+  - e.g. `inb`
