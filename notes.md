@@ -79,9 +79,9 @@ real 0m0.009s
     - security
 
 ## a bad os interface
-```c
-char* readline(int fd);
-```
+  ```c
+  char* readline(int fd);
+  ```
 - assumes infinite resources
 
 
@@ -90,7 +90,7 @@ char* readline(int fd);
 - kernel: lowest level of the os
   - decides what resources are available to apps (thus protecting the system)
   - provides layer of abstraction so that apps dont have to deal w hardware
-  - TODO: see notes.md.old
+  - todo: see notes.md.old
 
 ## kernel modules
 - are pieces of code that can be loaded and unloaded into the kernel upon demand
@@ -100,42 +100,42 @@ char* readline(int fd);
   - security implications
 - modules are stored in `/usr/lib/modeuls/kernel_release`
 - to see what kernel modules are currently loaded use
-```sh
-lsmod
-```
-```sh
-cat /proc/modules
-```
+  ```sh
+  lsmod
+  ```
+  ```sh
+  cat /proc/modules
+  ```
 - example
-```c
-#include <linux/module.h> /* needed by all modules */
+  ```c
+  #include <linux/module.h> /* needed by all modules */
 
-#include <linux/kernel.h> /* needed for KERN_INFO */
+  #include <linux/kernel.h> /* needed for KERN_INFO */
 
-int init_module(void) {
-  printk(KERN_INFO "hello world 1.\n");
-  return 0;
-}
+  int init_module(void) {
+    printk(KERN_INFO "hello world 1.\n");
+    return 0;
+  }
 
-void cleanup_module(void) {
-  printk(KERN_INFO "goodbye world 1.\n");
-}
-```
+  void cleanup_module(void) {
+    printk(KERN_INFO "goodbye world 1.\n");
+  }
+  ```
 - `printk`
   - was not meant to communicate info to user
 - to load a module: `sudo insmod <module_name> [args]`
-```sh
-sudo insmod proc_count.ko
-```
+  ```sh
+  sudo insmod proc_count.ko
+  ```
 - to unload a module: `sudo rmmod <module_name>`
-```sh
-sudo rmmod proc_count
-```
+  ```sh
+  sudo rmmod proc_count
+  ```
 
 # 9.27 1t
 
 ## simple os architecture
-- TODO: insert pic
+- todo: insert pic
 - user mode code: apps, libraries / c-lib
 - kernel mode: you can execute instructions here
   - e.g. `inb`
@@ -144,9 +144,9 @@ sudo rmmod proc_count
     - `syscall 35`: "`os[35]()`" in kernel mode
       - `syscall`s cannot be called in user mode, kernel will figure it out
 
-```c
-char *readline(int fd)
-```
+  ```c
+  char *readline(int fd)
+  ```
 - `fd`
   - `0` - `stdin`
   - `1` - `stdout`
@@ -161,9 +161,9 @@ char *readline(int fd)
       - force same memory mgmt on all apps
       - syscall overhead
 
-```c
-ssize_t read(int fd, void *buf, size_t bufsize);
-```
+  ```c
+  ssize_t read(int fd, void *buf, size_t bufsize);
+  ```
 - it is now the applications job to figure allocation out, kernel doesnt care
 - there is now a limit on read size
 - comes at a cost: a program that counts the number of lines in a file becomes more complicated although it has nice properties for the kernel
@@ -189,12 +189,12 @@ ssize_t read(int fd, void *buf, size_t bufsize);
   - moores law
 
 ## app: count words in a file
-- TODO: add pic
+- todo: add pic
 - power button = count number of words and put it on screen
 - historically called a standalone program
   - operates without benefits of an os
 - modern desktop
-  - TODO: add pic
+  - todo: add pic
 
 ## uefi: unified extensible firmware interface
 - os-independent way to boot
@@ -253,69 +253,294 @@ ssize_t read(int fd, void *buf, size_t bufsize);
 - last time we got 426 of bytes of machine code into `0x7c00`
 - file is in flash drive
 - bootloader reads word count program, say 20 sectors (of 512 bytes), into ram, say `0x1000`
-```c
-static void read_ide_sector(long secno, char *addr) {
-  while ((inb(0x1f7) & 0xc0) != 0x40) continue;
-  outb(0x1f2, 1);
-  outb(0x1f3, secno);
-  outb(0x1f4, secno >> 8);
-  outb(0x1f5, secno >> 16);
-  outb(0x1f6, secno >> 24);
-  outb(0x1f7, 0x20);
-  while ((inb(0x1f7) & 0xc0) != 0x40) continue;
-  insl(0x1f0, addr, 128);
-}
-```
+  ```c
+  static void read_ide_sector(long secno, char *addr) {
+    while ((inb(0x1f7) & 0xc0) != 0x40) continue;
+    outb(0x1f2, 1);
+    outb(0x1f3, secno);
+    outb(0x1f4, secno >> 8);
+    outb(0x1f5, secno >> 16);
+    outb(0x1f6, secno >> 24);
+    outb(0x1f7, 0x20);
+    while ((inb(0x1f7) & 0xc0) != 0x40) continue;
+    insl(0x1f0, addr, 128);
+  }
+  ```
 - `inb` reads from io registers
 - `0x1f7`: status + control
 - first `while` loop waits for drive to be ready
 - `insl`: "insert long", read 128 words (512 bytes) from `1f0` to `addr`
-```c
-static unsigned char inb(unsigned short port) {
-  unsigned char data;
-  asm volatile("inb %0, %1" : "=a" (data) : "dN" (port));
-  return data;
-}
-```
+  ```c
+  static unsigned char inb(unsigned short port) {
+    unsigned char data;
+    asm volatile("inb %0, %1" : "=a" (data) : "dN" (port));
+    return data;
+  }
+  ```
 
 ## i/o
 - programmed i/o (pio): special instructions for io
 - memory-mapped i/o: more popular, use ordinary load / store instructions `mov_ _`
 - intel: flash drive uses pio, monitor uses memory-mapped
-```c
-void write_integer_to_console(long n) {
-  unsigned short *p = (unsigned short*) 0xb8014;
-  while (n) {
-    *p-- = (7 << 8) | ('0' + n % 10);
-    n /= 10;
-  }
-}
-```
-- at `0xb8000`, 2 bytes per char, 1st byte being format (7: gray on black), 2nd byte being ascii, $80 \times 25$ grid
-- code above prints 
-```c
-static int isalpha(int x) { return 'a' <= x && x <= 'z' || 'A' <= x && x <= 'Z'; }
-
-void main(void) {
-  long words = 0;
-  bool in_word = false;
-  long secno = 100'000;
-  for (;; ++secno) {
-    char buf[512];
-    read_ide_sector(secno, buf);
-    for (int j = 0; j < 512; ++j) {
-      if (!buf[j]) {
-        write_integer_to_console(words + in_word);
-        while (true);
-      }
-      bool this_alpha = isalpha((unsigned char) buf[j]);
-      words += in_word & ~this_alpha;
-      in_word = this_alpha;
+  ```c
+  void write_integer_to_console(long n) {
+    unsigned short *p = (unsigned short*) 0xb8014;
+    while (n) {
+      *p-- = (7 << 8) | ('0' + n % 10);
+      n /= 10;
     }
   }
-}
-```
+  ```
+- at `0xb8000`, 2 bytes per char, 1st byte being format (7: gray on black), 2nd byte being ascii, $80 \times 25$ grid
+- code above prints 
+  ```c
+  static int isalpha(int x) { return 'a' <= x && x <= 'z' || 'A' <= x && x <= 'Z'; }
+
+  void main(void) {
+    long words = 0;
+    bool in_word = false;
+    long secno = 100'000;
+    for (;; ++secno) {
+      char buf[512];
+      read_ide_sector(secno, buf);
+      for (int j = 0; j < 512; ++j) {
+        if (!buf[j]) {
+          write_integer_to_console(words + in_word);
+          while (true);
+        }
+        bool this_alpha = isalpha((unsigned char) buf[j]);
+        words += in_word & ~this_alpha;
+        in_word = this_alpha;
+      }
+    }
+  }
+  ```
 - performance issues
   - read 1 sector at a time: change to 255 sectors
   - bus contention (controller $\leftrightarrow$ cpu, cpu $\leftrightarrow$ ram): dma (direct memory access), controller $\leftrightarrow$ ram, cpu sends instruction to controller telling where to copy data to
   - cpu and controller doing work disjointly: double buffering&mdash;cpu issues command to read sector $n + 1$ *then* cpu counts words in sector $n$ = overlapping work
+
+# 10.4 2t
+
+## how not to have an os standalone program
+- standalone program
+  - pro: embedded systems
+  - con: double buffering api is more complex
+  - con: multitasking
+    ```c
+    read_ide_sector(...) {
+      while (inb(...) & ...) {
+        --> schedule(); <--
+      }
+    }
+    ```
+  - con: dma (direct memory access)
+  - want separation of concern, guy writing word count program only focuses on counting words
+  - need better modularity
+
+## what's wrong with fuction call modularity for apps
+- too much pain to change implemetation
+- too much pain to reuse parts of os in other apps
+- too much pain to run simultaneous apps
+- too much pain to recover from faults
+- not enough insulation between apps
+
+## advantages of modularity
+- assume bugs $\propto$ (k)loc ((thousand) lines of code)
+- assume cost to find & fix a bug $\propto$ kloc
+- cost to fix all bugs: $\mathcal O(\mathrm{kloc}^2)$
+  - not accurate: more bugs may appear, bugs appear superlinearly to kloc, bugs get harder to fix, etc
+- modular: assume $k$ modules, bugs are isolated $\rightarrow \mathcal O\left ( k \cdot \left ( \frac{\mathrm{kloc}}{k} \right )^2 \right ) = \mathcal O\left ( \frac{\mathrm{kloc}}{k} \right )$
+
+## how can we tell whether our modularization is good or bad?
+- performance
+  - usually willing to sacrifice, say, 5% to 10%
+- robustness: tolerance of faults / failures / errors
+  - error: mistake in ur head
+  - fault: potential problem in code
+  - failure: observable behavior that is wrong 
+    - e.g. dereferencing a null pointer
+- neutrality / flexbility / lack of assumptions
+- simplicity (of use / to learn)
+
+## mechanism for modularity
+0. no modularity
+1. function call modularity (call and return instructions)
+   - callee can modify
+   - callee can loop forever
+   - callee can overslow the stack
+   - callee can mess w wrong devices
+   - callee can execute invalid instruction
+   - soft modularity: if callee and caller are both well-behaved / bug-free
+   - we want hard modularity: barrier
+
+## 3 fundamental system abstractions
+1. memory
+   - `write(addr, value)`
+   - `value = read(addr)`
+   - ram, secondary storage
+   - issues: thruput, latency, word size, volatility, coherence with caches
+2. interpreter
+   - `ip` instructor pointer + `ep` environment pointer + repertoire (instruction set)
+   - in x86: `rip` and `rsp`
+   - above for normal execution
+   - interrupts: when normal execution is disturbed
+3. link
+   - think of 2 modules as different devices, send signals from one to another thru a link
+
+## 2 major ways to get hard modularity
+1. client / service
+   - client and server w a link
+   - if client wants work done, send signal thru link and wait
+   - client
+     ```python
+     send(factn, {"!", 5});
+     receive(factn, response);
+     if response.code == ok: 
+       print(response.val)
+     else: 
+       print("error", response.err)
+     ```
+   - service
+     ```c
+     for (;;) {
+       receive(factn, req);
+       if (req.op.code == "!") {
+         for (int i = 1; i <= req.n; ++i) {
+           a *= i;
+         }
+         response = { "ok", a };
+       } else {
+         response = { "bad", 0 };
+       }
+       send(factn, response);
+     }
+     ```
+   - pro: limits error propagation
+     - client / server dying doesnt affect the other
+   - pro: no shared state
+   - pro: even if service loops forever, client can still make progress
+     - timeout on `receive`
+   - con: more setup hassle (configuration overhead)
+   - con: more resources (in the simplest case, need 2 cpus)
+   - con: latency / thruput / reliability (thru network)
+2. virtualization
+   - using interpreters
+   - simplest way: write an x86 emulator
+     ```c
+     int epi, eax;
+
+     for (;;) {
+       char i = *epi++;
+       switch (i) {
+         case ...: 
+           add(eax, ...);
+       }
+     }
+     ```
+   - "client" code: interpreted
+   - "service" code: functions called by interpreter
+   - pro: can put whatever checking code for safety
+     - e.g. checking pointers before dereferencing
+   - con: performance (2x - 10x)
+   - for better speed
+     - virtualizable hardware
+       - user-mode instructions: `addq`, `call`, `ret`, `jlt`, ...
+         - run at full speed in a virtuazlized (hw interpreter) program
+      - kernel-mode instructions: `inb`, `outb`, `insl`, `reti`, ...
+         - need them to be rare
+     - we need **protected trasfer of control** for hard modularity via virtualization
+     - `int`, `0x80`: interrupt, traps in user mode
+       - call kernel w 
+         - `eax = ` syscall number
+         - `args 1..n`: `ebx`, `ecx`, `edx`, `esi`, `edi`, `ebp`
+       - hw pushes onto kernel stack
+         - `ss`: stack segment
+         - `esp`: (user) stack pointer
+         - `eflags`
+         - `cs`: code segment
+         - `cip` (code) stack pointer
+         - error code: type of trap
+       - trap table: goes to code in kernel
+
+# 10.6 2th
+
+## orthogonality
+- processes, races
+- how you handle files, stream / network io, processes, should not interfere with each other
+- api / interfaces should be 
+  - simple
+  - complete
+  - composable
+
+## last time
+- `INT 0x80` "meta instruction" $\rightarrow$ pushes onto kernel stack `ip` and `ep`, goes into kernel mode
+  - kernel code does the syscall in question
+  - `reti` instruction: inverse, pops `ip` and `ep` off the stack into register, gets out of kernel mode
+  - `reti` can go to anywhere or run some other process
+- seasnet: x86-64
+  - usermode does not use `INT` instruction
+  - uses `SYSCALL`: uses `INT` but the idea is that it's faster
+    - `INT` is slower than a function call
+      - pushing 6 words instead of 1
+      - have to access ram (kernel stack)
+      - make sure cache is right (context switch)
+    - attempts to streamline, transfer to kernel mode and left kernel figure out what to use and what to restore
+    - `rax` = syscall #
+    - args: `rdi`, `rsi`, `rdx`, `r10`, `r8`, `r9`
+    - sets `rip`, etc. to model specific registers
+  - one way to implement "syscalls"
+- `getpid()`
+- `vdso`: virtual dynamicallly-linked shared obejct
+  - `ldd /bin/sh`
+  - `libc.so.6` $\Rightarrow$ `/lib64/libc.so.6` shared object code
+    - more complcated things such as `open()`
+  - `linux-vdso.1` $\Rightarrow$ kernel memory, readonly for users
+    - `getpid()` in here
+
+## processes
+- built from virtualizable processor + os = program in execution in an isolated domain
+  - safety
+  - simplicity
+- processes need to access
+  - registers: give cpu 1 process at a time
+- `cr0` points at page table, maps virtual to physical addresses
+- access registers (fast)
+- access primary memory:l each process has its own page table
+- access io devices (less common): syscall, devices do differ
+  - storage: flash, hard drive
+    - request / response
+    - random access
+    - finite
+  - stream: keyboard, network
+    - spontaneous data generation
+    - infinite
+  - graphics: high performance
+    - kind of a mix
+  - need a set of syscall primitives
+    - `fd = open("/usr/lib/libc.so", O_WRONLY | O_NOFOLLOW | ..., 0644)`
+      - puts a pointer (file descriptor = index) to file in file descriptor table in process table
+      - "opaque handle"
+    - `close(12)`
+    - `read(12, buf, 512)`
+      - will return -1, `errno = EBADF` bad file descriptor
+      - has an implicit offset, needs to be stored somewhere
+        - stored in file description pointed to by file descriptor
+        - which then points to actual file
+      - `(sed 1q; sed 's/a/b/;) < file`
+        - second `sed` should start where first stopped
+        - so offset shouldnt live in the `sed` process itself and hence the file description layer between file descriptor and actual file
+    - `write(12, buf, 1024)`
+    - `n = dup(12)` $\rightarrow$ `15`
+      - same file descriptor
+      - by convention, file descriptors 0, 1, 2 are `stdin`, `stdout`, `stderr`
+      - `int fd0 = dup(0); close(0); int fd1 = open(...);`
+  - limitations
+    - access is sequential
+      - potential fix: have a different flavor of `read` for storage devices taking an extra argument
+      - orthogonality $\rightarrow$ `lseek(12, 192308, 0)` position read / write pointer at 192308 from file start (`lseek(fd, offset, whence)`), whence: 1 = from file start `SEEK_SET`, 2 = from current location `SEEK_CUR`, 3 = from file end `SEEK_END`
+      - `lseek read` / `lseek write` hurts performance $\rightarrow$ `pread` / `pwrite`: positioning read / write
+
+## next lecture
+- process primitives
+  - `fork()`
