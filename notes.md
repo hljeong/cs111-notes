@@ -544,3 +544,123 @@ real 0m0.009s
 ## next lecture
 - process primitives
   - `fork()`
+
+# 10.11 3t
+
+## file descriptor trouble
+- use a fd thats closed (or never opened)
+  ```c
+  #include <errno>
+
+  write(47, "xy", 2)
+  ```
+  - returns `-1`, sets `errno == EBADF`
+- `open`, but resource not available
+  ```c
+  int f = open(...);
+  if (f < 0) { error; return; }
+  read(f);
+  somefun(f);
+  write(1, ...);
+  ```
+- io error
+- end of file (`read` returns `0`)
+- errno: lots of `if`s
+
+## process api in posix/linux
+- `pid_t fork(void);`
+  - `#include <sys/wait.h>`: `typedef int pid_t`
+  - returns an integer containing a process id
+  - returns `-1` on failure
+  - otherwise returns new process id
+    - positive integer
+  - returns `0` if in child process
+  - `int execvp(char const *file, char * const *argv);`
+  - `pid_t waitpid(pid_t p, int *status, int options);`: wait for child process to die and store exit status into an integer in parent, returns `p` if successfully `p` to die, otherwise returns `-1` (e.g. wrong `p`, `p` already dead)
+    ```c
+    pid_t p = fork();
+    switch (p) {
+      case -1: return error();
+      case 0: 
+        execvp("/bin/date", (char*[]) {"date", "-u", NULL});
+        return error(); // <-- executed in child process
+      default: 
+        int status;
+        if (waitpid(p, &status, 0) < 0) return error(...);
+        if (!WIFEXITED(status) || WEXITSTATUS(status) != 0)
+        return error(...);
+    }
+    ```
+  - date.c: 
+    ```c
+    int main(int argc, char **argv) {...}
+    ```
+- aside on `restrict`
+  - caller not allowed to pass pointers pointing to the same place (todo)
+  ```c
+  int posix_spawnvp(
+    pid_t *restrict pid, 
+    char const *restrict file, 
+    posix_spawn_file_actions_t const *restrict acts, 
+    posix_spawn_attr_t const *restrict attrp, 
+    char *const *restrict argv, 
+    char *const *restrict envp
+  );
+  ```
+- `_Noreturn void _exit(int status);`
+  - send message to parent process
+  ```c
+  while (fork()) continue;
+  ```
+
+## todo: ??
+- todo: hr 2
+- copy entry in process table
+  - except `rax` which stores result of system call
+  - pid in `rax` of parent
+  - `0` in `rax` of child
+- `fork`: child = parent *except* for
+  - return value of `fork`
+  - pid
+  - ppid (parent pid)
+  - accumulated execution times
+  - file descriptors (file descriptions are shared)
+  - file locks (child does not have the lock)
+  - pending signals
+- `exec` is opposite: it destroys / replaces program data (stack, heap), registers, signal handlers reset to default
+
+## processes do need to affect each other
+- need controlled isolation
+- files: simple, straightforward, slow, space, names, hassle
+  - race conditions
+    - occurs when behavior depends on timing
+    - `(cat a & cat b) >outfile`: nondeterministic
+    - `(cat >a & cat >b) <infile`
+    - sorting a big file and using a temp file to store intermediate results: `int tmpfd = open("/tmp/sorttmp", O_WRONLY | O_CREAT | O_TRUNC, 0600);`
+      - somone else might have it
+      - wait for other `sort` instance to finish using it
+        - still has space where race condition can happen
+        - toctou race
+        ```c
+        acquire_lock("/tmp");
+        // begin critical sector
+        if (access(...))
+          open(...);
+        // end critical sector
+        release_lock("/tmp");
+        ```
+      - `fcntl(fd, F_SETLK / F_SETLKW / F_GETLK / F_UNLOC)` system call
+        - *voluntary* locks
+        - performance problem: 
+      - `O_EXCL` exclusive flag: fail if file already exists
+      - include pid in filename
+        - todo: why bad?
+        - use random number + `O_EXCL` flag
+          - work but somewhat unsatisfactory
+      - `O_TMPFILE` flag: create a file somewhere in directory but dont give it a name
+        - `int fd = open("/tmp", O_TMPFILE | O_CREAT | ...);`
+        - essentially do `open` and `unlink` atomically
+- message-passing
+- shared memory: 2 processes not isolated completely, fastest, most dangerous - race conditions
+- exit status, signals `kill -HUP 1923`
+- covert channels: e.g. cpu load
