@@ -664,3 +664,171 @@ real 0m0.009s
 - shared memory: 2 processes not isolated completely, fastest, most dangerous - race conditions
 - exit status, signals `kill -HUP 1923`
 - covert channels: e.g. cpu load
+
+# 10.13 3th
+
+## breaking application down
+- find data $\rightarrow \fbox{read input} \rightarrow \fbox{find words} \rightarrow \fbox{count words} \rightarrow$ output
+- whos in charge
+- lazy evaluation
+  - minimize total amt of work done
+  - `count_words` in charge
+- eager evaluation
+  - `read_input` in charge
+- mixed evaluation
+  - all 3 run simultaneously
+  - allows for more parallelism
+- pipes
+  - control execution of multiple processes without any of the processes being in charge
+
+## what a pipe looks like inside the kernel
+- buffer of certain size, depending on the kernel, say 4 KiB
+- w/in the buffer there are values r / w: read / write pointer
+- problems with pipes
+  - write to a full pipe
+    - consider as an error, return `-1`, set `errno = EAGAIN`
+    - process blocks (default)
+    - process gets `SIGPIPE` signal
+      - if no reader
+  - read from an empty pipe
+    - rare (todo:??)
+    - normal
+    - if no writers: `read` returns `0 == EOF`
+- pipes are nameless
+  - unless named pipe
+    ```sh
+    $ mkfifo p
+    $ ls -l p
+    prw-rw-rw- ... p
+    ```
+  ```sh
+  int pipe(int ds[2]);
+  ```
+  - to use the pipe, call `fork`
+  - `$ A | B` want another shell prompt after this
+  - need 3 processes
+  - `sh` $\rightarrow$ `A`, `B`
+    - `cat bigfile | less` $\rightarrow$ q
+    - `less` is gone
+    - shell only cares about `B` fishing
+  - `sh` $\rightarrow$ `A`, `B`
+  - `sh` $\rightarrow$ `B`, `A`
+    - conventionally, this process tree is used
+    - performance advantage: more parallelism, child process sets up pipeline
+  - shell.c
+    ```c
+      pid_t b = fork();
+      if (b < 0) error();
+      if (b == 0)
+        setup_a_b(...);
+      else if (waitpid(b, &status, 0) < 0)
+        error();
+      return status;
+
+      ...
+
+      void setup_a_b(void) {
+        int fd[2];
+        if (pipe(fd) != 0) error();
+        pid_t a = fork();
+        if (a < 0) error();
+        if (a == 0) {
+          dup2(fd[1], STDOUT_FILENO);
+          close(fd[0]);
+          close(fd[1]);
+          execlp("A", "A", NULL);
+          error();
+        }
+        dup2(fd[0], STDIN_FILENO);
+        close(fd[0]);
+        close(fd[1]);
+        execlp("B", "B", NULL);
+        error();
+      }
+    ```
+    - no exit status for `A`
+
+## losing power
+- small backup power (battery)
+- copy cache / ram into secondary storage fast
+- how to support this
+  - simplify applications by saying kernel will handle everything
+    - snapshots each process
+    - as if nothing happened in the processes' pov
+    - relatively expensive (efficiency problem)
+    - assumes you can snapshot everything
+      - often not the case when process is talking to the outside world (e.g. cloud)
+      - cannot snapshot everything
+      - clock will change (time dependent processes)
+  - `/dev/power`
+    - tells you the power status
+    - make processes inspect `/dev/power` and do appropriate things
+    - each program must be modified to read `/dev/power` (polling)
+  - `blocking read`
+      ```c
+      char c;
+      fd = open("/dev/power", ...);
+      read(fd, &c, 1);
+      ```
+    - cant do anything while blocked
+    - unless assuming multithreading, but need to notify other threads
+  - signals
+    - rare events
+    - localize handling
+      - break out of an expensive / complicated loop
+    - kill a process
+    - timeouts
+
+## signals on linux
+- `kill -HUP 19362`{.sh}
+  - send hangup signal to process 19362
+  - `if (kill(SIGHUP, 19362) < 0)`{.c}
+- ordinarily user code can only send signals to processes with the same user id
+- user
+  - `C-c`: send `SIGINT` to every process in the foreground
+  - `SIGKILL`: i want you to die and i dont want you to be able to do anything abt it, cannot be ignored
+    - `kill -KILL $$`{.sh}
+  - `SIGSTOP`
+  - `SIGUSR1`...
+  - `SIGHUP`
+- internal errors
+  - invalid instruction: `SIGILL`, illegal instruction signal
+  - floating point exception: `SIGFPE`, not sent anymore, only sent when `INT_MIN / -1` or `0 / 0`
+  - invalid address (bad ptr etc): `SIGSEGV`, `SIGBUS`
+- io errors
+  - `SIGIO`
+  - `SIGPIPE`: writing to pipe w no readers
+- death of a child process
+  - `SIGCHLD`: rare, one of subsidiaries has died, prob want to clal `waitpid`
+- alarm clock
+  - `SIGALRM`
+- `SIGXCPU`: sent to process when (just abt to) out of cpu time
+- `SIGXFSZ`: file size
+- `#include <signal.h>`{.c}
+  - `typedef void (*sig_handler_t)(int);`{.c} function type, takes `int`{.c} and returns `void`{.c}
+  - `sighandler_t signal(int signo, sighandler_t handler)`{.c} set signal handler and return previous
+    ```c
+    void handle_control_C(int sig) {
+      write(1, "?", 1);
+    }
+
+    int main(void) {
+      signal(SIGINT, handle_control_C);
+      ...
+    }
+    ```
+  - signal handling dispatch table in process table
+- signal handlers can be called (by default) between any pair of machine instructions
+  - instructions are atomic
+  - syscalls are atomic
+  - others are not: library calls
+    - have to be prepared for the handler function to be called anywhere within a library call
+    - e.g. `malloc(1000)`{.c}
+      - `malloc` in handler = disaster
+      - posix rule: dont do that, never call `malloc` from signal handler
+    - e.g. `printf("?")`{.c}
+      - may mess up internal data structure
+  - reentrant functions: functions that you can call in the middle of their call
+    - e.g. `sqrt`{.c}
+    - !e.g. `malloc`{.c}, `printf`{.c}
+    - how to know which functions are reentrant? read the manual
