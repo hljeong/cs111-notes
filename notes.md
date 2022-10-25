@@ -82,6 +82,7 @@ real 0m0.009s
   ```c
   char* readline(int fd);
   ```
+- read a line from `fd`, return pointer to the bytes read
 - assumes infinite resources
 
 
@@ -90,7 +91,8 @@ real 0m0.009s
 - kernel: lowest level of the os
   - decides what resources are available to apps (thus protecting the system)
   - provides layer of abstraction so that apps dont have to deal w hardware
-  - todo: see notes.md.old
+
+![](img/9.23.1.png)
 
 ## kernel modules
 - are pieces of code that can be loaded and unloaded into the kernel upon demand
@@ -135,7 +137,8 @@ real 0m0.009s
 # 9.27 1t
 
 ## simple os architecture
-- todo: insert pic
+![](img/9.27.1.png)
+
 - user mode code: apps, libraries / c-lib
 - kernel mode: you can execute instructions here
   - e.g. `inb`
@@ -164,9 +167,12 @@ real 0m0.009s
   ```c
   ssize_t read(int fd, void *buf, size_t bufsize);
   ```
+- returns `-1` for fail, sets `errno`
+- otherwise returns number of bytes read $\leq$ `bufsize`
 - it is now the applications job to figure allocation out, kernel doesnt care
 - there is now a limit on read size
 - comes at a cost: a program that counts the number of lines in a file becomes more complicated although it has nice properties for the kernel
+- waterbed effect: improved in one aspect, worse in another
 
 ## problems with designing operating systems
 - waterbed effect (tradeoffs): general problem in systems
@@ -181,7 +187,7 @@ real 0m0.009s
 - propagation of effects
   - 2 features that independently work may not work when combined
   - e.g. msft invented shift-jis to encode japanese characters
-    - 2-byte encoding w top bit on = $2^15$ characters
+    - 2-byte encoding w top bit on = $2^{15}$ characters
     - other feature: file names `C:\abc\def\ghi.txt`
     - combination doesnt work because 2nd byte of shift-jis character can be anything (could just happen to be `'\'`)
     - fixed by moving into kernel (complicating the os)
@@ -189,12 +195,10 @@ real 0m0.009s
   - moores law
 
 ## app: count words in a file
-- todo: add pic
 - power button = count number of words and put it on screen
 - historically called a standalone program
   - operates without benefits of an os
-- modern desktop
-  - todo: add pic
+- modern desktop: cpu, cam, drive, monitor on bus
 
 ## uefi: unified extensible firmware interface
 - os-independent way to boot
@@ -209,7 +213,7 @@ real 0m0.009s
 - guid partion table
 - uefi boot manager (in firmware)
   - read only but configurable via parameters in some sort of nvram (nonvolatile ram)
- - can read gpt tables
+  - can read gpt tables
   - can access files in vfat format etc
   - can run code in efi format
   - 6 phases
@@ -225,7 +229,7 @@ real 0m0.009s
 
 ## intel core i3-9100
 - supports an older, simpler way of booting
-- 6 mib l3 cache, 3.6 ghz + 4 gib ddr3 sdram + 1 tb flash sata + intel uhd graphic
+- 6 mib l3 cache, 3.6 ghz + 4 gib ddr3 sdram + 1 tb flash sata + intel uhd graphics
 - sata: serial ata
   - 7-conductor connector
   - ata (pata): advance technology attachment (16-bit connector in parallel)
@@ -243,6 +247,7 @@ real 0m0.009s
     - bios tries to do the 4 steps in coreboot
       - run in cache only mode
       - step 4: looks for a device containing a particular bit pattern in its first 512 bytes (sector) (mbr: master boot record, 446 bytes of x86 machine code, 64 bytes of partition table (list of 4 pieces of drive, takes role of gpt), 2 bytes of signature `0x55 0xaa` or `0xaa55`)
+    - bios copies mbr into ram at `0x7c00` then `jmp`s there
 
 # 9.29 1th
 
@@ -250,20 +255,27 @@ real 0m0.009s
 - one happy program
 - uses function calls
 - count lines in a file only via function calls + machine instructions at lowest level
-- last time we got 426 of bytes of machine code into `0x7c00`
+- last time we got 446 of bytes of machine code into `0x7c00`
 - file is in flash drive
 - bootloader reads word count program, say 20 sectors (of 512 bytes), into ram, say `0x1000`
   ```c
   static void read_ide_sector(long secno, char *addr) {
     while ((inb(0x1f7) & 0xc0) != 0x40) continue;
-    outb(0x1f2, 1);
-    outb(0x1f3, secno);
+    outb(0x1f2, 1);               // sector count
+    outb(0x1f3, secno);           // sector #...
     outb(0x1f4, secno >> 8);
     outb(0x1f5, secno >> 16);
     outb(0x1f6, secno >> 24);
-    outb(0x1f7, 0x20);
+    outb(0x1f7, 0x20);            // control
     while ((inb(0x1f7) & 0xc0) != 0x40) continue;
     insl(0x1f0, addr, 128);
+  }
+
+  void bootloader(void) {
+    for (int i = 1; i <= 20; ++i) {
+      read_ide_sector(i, nextprog_addr + (i - 1) * 512);
+    }
+    nextprog();
   }
   ```
 - `inb` reads from io registers
@@ -292,7 +304,6 @@ real 0m0.009s
   }
   ```
 - at `0xb8000`, 2 bytes per char, 1st byte being format (7: gray on black), 2nd byte being ascii, $80 \times 25$ grid
-- code above prints 
   ```c
   static int isalpha(int x) { return 'a' <= x && x <= 'z' || 'A' <= x && x <= 'Z'; }
 
@@ -339,7 +350,7 @@ real 0m0.009s
   - need better modularity
 
 ## what's wrong with fuction call modularity for apps
-- too much pain to change implemetation
+- too much pain to change implementation
 - too much pain to reuse parts of os in other apps
 - too much pain to run simultaneous apps
 - too much pain to recover from faults
@@ -366,7 +377,7 @@ real 0m0.009s
 ## mechanism for modularity
 0. no modularity
 1. function call modularity (call and return instructions)
-   - callee can modify
+   - callee can modify caller's registers
    - callee can loop forever
    - callee can overslow the stack
    - callee can mess w wrong devices
@@ -447,9 +458,9 @@ real 0m0.009s
      - virtualizable hardware
        - user-mode instructions: `addq`, `call`, `ret`, `jlt`, ...
          - run at full speed in a virtuazlized (hw interpreter) program
-      - kernel-mode instructions: `inb`, `outb`, `insl`, `reti`, ...
-         - need them to be rare
-     - we need **protected trasfer of control** for hard modularity via virtualization
+        - kernel-mode instructions: `inb`, `outb`, `insl`, `reti`, ...
+           - need them to be rare
+     - we need **protected transfer of control** for hard modularity via virtualization
      - `int`, `0x80`: interrupt, traps in user mode
        - call kernel w 
          - `eax = ` syscall number
@@ -479,7 +490,7 @@ real 0m0.009s
   - `reti` instruction: inverse, pops `ip` and `ep` off the stack into register, gets out of kernel mode
   - `reti` can go to anywhere or run some other process
 - seasnet: x86-64
-  - usermode does not use `INT` instruction
+  - user mode does not use `INT` instruction
   - uses `SYSCALL`: uses `INT` but the idea is that it's faster
     - `INT` is slower than a function call
       - pushing 6 words instead of 1
@@ -490,23 +501,35 @@ real 0m0.009s
     - args: `rdi`, `rsi`, `rdx`, `r10`, `r8`, `r9`
     - sets `rip`, etc. to model specific registers
   - one way to implement "syscalls"
-- `getpid()`
-- `vdso`: virtual dynamicallly-linked shared obejct
-  - `ldd /bin/sh`
+- `execlp(char const *file, char const *arg0, ...)`{.c}
+  - thin wrapper around actual syscall
+- 2 layers maybe too little protection, too trusting
+  - hardware $\rightarrow$ microkernel (only know memory management, no scheduling etc) $\rightarrow$ process management $\rightarrow$ ...
+  - microsoft: ring structure approach
+  - traditional intel: 4 levels (0, 1, 2, 3)
+- `getpid()`: cheap syscall
+  - suffer all the downside of the transition and stuff
+  - linux does $\downarrow$
+- `vdso`: virtual dynamically-linked shared obejct
+  - `$ ldd /bin/sh`{.sh}
   - `libc.so.6` $\Rightarrow$ `/lib64/libc.so.6` shared object code
+    - 1 copy of c lib read only shared
     - more complcated things such as `open()`
-  - `linux-vdso.1` $\Rightarrow$ kernel memory, readonly for users
-    - `getpid()` in here
+  - `linux-vdso.1` $\Rightarrow$ some address in kernel memory, readonly for users
+    - simple "syscalls" such as `getpid()` in here (just a `movl`)
 
 ## processes
 - built from virtualizable processor + os = program in execution in an isolated domain
   - safety
   - simplicity
 - processes need to access
-  - registers: give cpu 1 process at a time
+- registers: give cpu 1 process at a time
+- process table
 - `cr0` points at page table, maps virtual to physical addresses
 - access registers (fast)
-- access primary memory:l each process has its own page table
+  - bare hardware
+- access primary memory: each process has its own page table
+  - (virtualizable hardware)
 - access io devices (less common): syscall, devices do differ
   - storage: flash, hard drive
     - request / response
@@ -538,7 +561,7 @@ real 0m0.009s
   - limitations
     - access is sequential
       - potential fix: have a different flavor of `read` for storage devices taking an extra argument
-      - orthogonality $\rightarrow$ `lseek(12, 192308, 0)` position read / write pointer at 192308 from file start (`lseek(fd, offset, whence)`), whence: 1 = from file start `SEEK_SET`, 2 = from current location `SEEK_CUR`, 3 = from file end `SEEK_END`
+      - orthogonality $\rightarrow$ `lseek(12, 192308, 0)` position read / write pointer at 192308 from file start (`lseek(fd, offset, whence)`), whence: 0 = from file start `SEEK_SET`, 1 = from current location `SEEK_CUR`, 2 = from file end `SEEK_END`
       - `lseek read` / `lseek write` hurts performance $\rightarrow$ `pread` / `pwrite`: positioning read / write
 
 ## next lecture
@@ -555,17 +578,25 @@ real 0m0.009s
   write(47, "xy", 2)
   ```
   - returns `-1`, sets `errno == EBADF`
-- `open`, but resource not available
+- closed and reopened
   ```c
   int f = open(...);
   if (f < 0) { error; return; }
   read(f);
-  somefun(f);
+  somefun(f); // --> close(100); g = open(...);
   write(1, ...);
   ```
+- `open`, but resource not available
+  - pull flash drive out while running program
+  - returns `-1` with some other `errno`
 - io error
+  - e.g. bad flash drive, hardware problem
+  - `errno = EIO`
 - end of file (`read` returns `0`)
-- errno: lots of `if`s
+- `errno`: lots of `if`s
+  - exception handling (some other code handles it)
+    - distant from code, may not have good diagnosis
+    - linux does not do this (lower level)
 
 ## process api in posix/linux
 - `pid_t fork(void);`
@@ -582,21 +613,26 @@ real 0m0.009s
     switch (p) {
       case -1: return error();
       case 0: 
+        alarm(10); // <-- kills process in 10 seconds w error
         execvp("/bin/date", (char*[]) {"date", "-u", NULL});
         return error(); // <-- executed in child process
       default: 
         int status;
         if (waitpid(p, &status, 0) < 0) return error(...);
         if (!WIFEXITED(status) || WEXITSTATUS(status) != 0)
-        return error(...);
+          return error(...);
     }
     ```
   - date.c: 
     ```c
     int main(int argc, char **argv) {...}
     ```
+    - replaces currently running code
+- `pid_t waitpid(pid_t p, int *status, int options)`
+  - can only wait for own children processes
 - aside on `restrict`
-  - caller not allowed to pass pointers pointing to the same place (todo)
+  - caller not allowed to pass pointers pointing to the same place
+- different api (not original)
   ```c
   int posix_spawnvp(
     pid_t *restrict pid, 
@@ -607,15 +643,24 @@ real 0m0.009s
     char *const *restrict envp
   );
   ```
+  - more efficient than `fork` `exec` (vs orthogonality)
 - `_Noreturn void _exit(int status);`
+  - `exit()` is library code that does some other cleanup
+    - e.g. writes out from `stdout` buffer
   - send message to parent process
-  ```c
-  while (fork()) continue;
+  - does not destroy process, `waitpid` destroys process (needs to pick up exit status)
+  ```sh
+  #!/bin/sh
+  exec date -u
   ```
+  - run `date` but dont `fork`, process now runs `date`
+  - kinda like bootloader
 
-## todo: ??
-- todo: hr 2
-- copy entry in process table
+## how does the os `fork`
+- syscall for `fork` in kernel (e.g. process 27)
+  - stuff
+  - `sysexit(27's info)`
+- copy entry in process table (e.g. fd table etc.)
   - except `rax` which stores result of system call
   - pid in `rax` of parent
   - `0` in `rax` of child
@@ -626,7 +671,7 @@ real 0m0.009s
   - accumulated execution times
   - file descriptors (file descriptions are shared)
   - file locks (child does not have the lock)
-  - pending signals
+  - pending signals (sent to parent)
 - `exec` is opposite: it destroys / replaces program data (stack, heap), registers, signal handlers reset to default
 
 ## processes do need to affect each other
@@ -643,10 +688,10 @@ real 0m0.009s
         - toctou race
         ```c
         acquire_lock("/tmp");
-        // begin critical sector
+        // begin critical section
         if (access(...))
           open(...);
-        // end critical sector
+        // end critical section
         release_lock("/tmp");
         ```
       - `fcntl(fd, F_SETLK / F_SETLKW / F_GETLK / F_UNLOC)` system call
@@ -654,7 +699,7 @@ real 0m0.009s
         - performance problem: 
       - `O_EXCL` exclusive flag: fail if file already exists
       - include pid in filename
-        - todo: why bad?
+        - everyone needs to cooperate
         - use random number + `O_EXCL` flag
           - work but somewhat unsatisfactory
       - `O_TMPFILE` flag: create a file somewhere in directory but dont give it a name
@@ -764,7 +809,8 @@ real 0m0.009s
     - tells you the power status
     - make processes inspect `/dev/power` and do appropriate things
     - each program must be modified to read `/dev/power` (polling)
-  - `blocking read`
+  - blocking read
+
       ```c
       char c;
       fd = open("/dev/power", ...);
@@ -832,3 +878,445 @@ real 0m0.009s
     - e.g. `sqrt`{.c}
     - !e.g. `malloc`{.c}, `printf`{.c}
     - how to know which functions are reentrant? read the manual
+
+# 10.18 4t
+
+## signals
+- `signal(int signaltype, handler)`{.c}
+- can be called between any pair of instructions
+- call only:
+  - reentrant functions
+  - async-safe functions
+- blocking signals
+  - `int pthread_sigmask(int how, sigset_t const *restrict set, sigset_t *restrict oset)`{.c}
+  - `how`: `SIG_BLOCK`, `SIG_UNBLOCK`, `SIG_SETMASK`
+  - `typedef long sigset_t;`{.c}
+  - `oset` returns old signal set
+  - block worrisome signals $\rightarrow$ delicate code (should be short and sweet) $\rightarrow$ restore the previous signal mask
+    - delicate code should be short and sweet
+  - kernel will remember arrived signals and wait until unblock
+  - cant make `malloc` async-safe cuz too heavy (2 extra syscalls and not responsive to signals)
+  - *critical section*
+
+## `gzip`
+- `gzip foo`
+  - creates `foo.gz`
+  - removes `foo`
+  - as a user, want these to be atomic
+- internally, `gzip` makes sure it either does both or neither (critical section)
+  - reads `foo`, writes to `foo.tmp` (compressed output), takes a long time
+  - in critical section: 
+    - (normal) rename `foo.tmp` to `foo.gz`, remove `foo`
+    - (signal) unlink `foo.tmp`
+      ```c
+      void cleanup() { unlink("foo.tmp"); }
+
+      int main() {
+        signal(SIGINT, cleanup);
+        in = open("foo", RD);
+        out = open("foo.tmp", WR);
+        compress();
+        close(out);
+        rename("foo.tmp", "foo.gz");
+        remove("foo");
+        close(in);
+      }
+      ```
+    - signal handler may clean up when we dont want it
+      ```c
+      int tmpexists;
+
+      void cleanup() { if (tmpexists) unlink("foo.tmp"); }
+
+      int main() {
+        signal(SIGINT, cleanup);
+        in = open("foo", RD);
+        // block SIGINT
+        tmpexists = 1;
+        out = open("foo.tmp", WR);
+        // unblock
+        compress();
+        close(out);
+        // block SIGINT
+        tmpexists = 0;
+        rename("foo.tmp", "foo.gz");
+        remove("foo");
+        // unblock
+        close(in);
+      }
+      ```
+    - compiler might optimize and remove setting `tmpexists`
+    - decorate `tmpexists`: `volatile int tmpexists;`{.c}
+      - tells compiler it can change at any time
+
+## signal handling
+- pros
+  - can manage processes better
+  - fix some performance problems w polling
+- cons
+  - processes less isolated (harder to follow code)
+  - can be signaled at any time (complicated code)
+  - buggy apps (huge opportunities for race conditions)
+
+## why threads
+- process isolation is too restrictive
+- may want to communicate with other processes
+  - large cost (2 syscalls `write` + `read` via pipe)
+  - threading: `store` + `load`
+- less latency in cooperation + better thruput (e.g. passing a ptr to a big piece of storage)
+- process state
+  - registers
+  - --- thread state ---: as small as possible so threads are cheap
+  - stack
+  - signal mask
+  - errno (syscall fail), (thread local storage (tls))
+  - runnability (`RUNNABLE`, `BLOCKED`, `WAITING`)
+  - id
+  - --- shared by all threads in same process ---
+  - pid
+  - address space (code + heap + static vars)
+  - file descriptor table
+  - signal handler table
+  - (working root) directory
+    - `chroot` requires root privileges
+  - usid / gid
+  - umask
+- no protection in memory access
+- embarassing parallelism
+  - no need to synchronize
+
+## threading
+- `int pthread_create(pthread_t *id, pthread_attr_t const *attr, void * (*fn) (void*), void *arg);`{.c}
+  - stores thread id
+  - `fn`: code to be executed
+  - `arg` gets passed to `fn`
+- `int pthread_join(pthread_t tid, void **status);`{.c}
+  - wait for `tid` thread to finish
+- `void pthread_exit(void *status);`{.c}
+- `int pthread_kill(pthread_t tid, int sig);`{.c}
+  - sends signal to thread
+  - thread will have all the problems in terms of signal handling
+  - eggert does not recommend: too heavyweight, too powerful, too much control, deprecated
+- `int pthread_cancel(pthread_t);`{.c}
+  - no signal
+  - arranges for the target thread to terminate but not yet
+  - only terminates when it enters *cancellation point*
+
+## synchronization
+```c
+long balance
+
+/** 
+ * movq balance, %rax
+ * addq %rsi, %rax 
+ * movq %rax, balance
+ */
+void deposit(long val) { // t1
+  balance += val;
+}
+
+/** 
+ * movq balance, %rbx
+ * ...
+ */
+bool withdraw(long val) { // t2
+  if (val <= balance) {
+    balance -= val;
+    return true;
+  }
+  return false;
+}
+```
+- could step on each others toes while data is cached in the registers
+- `transfer(acct1, acct2, val)`{.c}
+- `audit_all_accounts()`{.c}: get access to all accounts in an atomic way
+- need avoid *race conditions*: buggy behavior exposed by a particular order of execution
+  - hard to reproduce
+- classic way to prevent race conditions: critical section
+  - a sequence of instructions such that *indivisibility* is preserved
+  - at most one thread's `ip` is in that sequence at any given time
+  - enforcing a critical section
+    1. mutual exclusion
+    2. bounded wait
+
+    ```c
+    volatile long balance
+
+    void deposit(long val) { // t1
+      // start critical
+      balance += val;
+      // end critical
+    }
+
+    bool withdraw(long val) { // t2
+      // start crital
+      if (val <= balance) {
+        balance -= val;
+        return true;
+      }
+      // end crital
+      return false;
+    }
+    ```
+
+```c
+#define N 512
+
+struct pipe {
+  char buf[N];
+  size_t r, w;
+};
+
+void writec(struct pipe *p, char c) {
+  // fix 2: lock();
+  // fix: while (p->w - p->r == N);
+  // still bad, race condition between two loads
+  p->buf[p->w++ % N] = c;
+  // fix 2: unlock();
+  // still bad, while loop could go on forever
+}
+
+char readc(struct pipe *p) {
+  // fix 2: lock();
+  // fix: while (p->w == p->r);
+  // still bad, race condition between two loads
+  return p->buf[p->r++ % N];
+  // fix 2: unlock();
+  // still bad, while loop could go on forever
+}
+```
+
+# 10.20 4th
+
+## uniprocessor case
+- `disable_interrupt();`{.c}
+- `enable_interrupts();`{.c}
+
+## multiprocessor case
+- `lock();`{.c}
+- `unlock();`{.c}
+  ```c
+  // need volatile here
+  static bool L;
+
+  // must not have lock to call
+  bool lock() {
+    while (L);
+    L = true; // race condition here
+  }
+
+  // must have lock to call
+  void unlock(void) {
+    L = 0;
+  }
+  ```
+- indivisibility
+  - e.g.
+    ```c
+    // t1: 
+    char buf[100];
+    strcpy(buf, "Hello");
+    strcpy(buf, "Goodbye");
+
+    // t2: 
+    if (strcmp(buf, "Hello") != 0 && strcmp(buf, "Goodbye" != 0)) crash(); // can crash
+    ```
+  - e.g.
+    ```c
+    struct x {
+      unsigned a : 1;
+      unsigned b : 7;
+    }
+
+    v.a = 1;
+    /**
+     * movb v,   %al
+     * orb  $1,  %al
+     * movb %al, v
+     */
+    ```
+  - problem is with processor
+- x86-64: aligned 32-bit loads and stores are atomic
+  - causes slowdown
+  - change `bool`{.c} to `int`{.c} in `lock()` `unlock()`
+- `xchgl %eax, (%rbx)`
+  
+    ```c
+    t = %eax;
+    %eax = *(%rbx);
+    *(rbx) = t;
+    ```
+  - at hardware level, cpu sends signal saying it will store & load at location
+  - performance cost
+    ```c
+    int xchgl(int v, int *p) {
+      int t = *p;
+      *p = v;
+      return t;
+      // asm("xchgl ...");
+    }
+    ```
+- fixed: 
+  ```c
+  static int volatile L;
+
+  void lock(void) {
+    while (!xchgl(1, &L));
+  }
+
+  void unlock(void) {
+    L = 0;
+  }
+  ```
+
+## critical section performance
+- want to minimize size of critical section
+- general technique / rule of thumb
+  - find shared writes
+  - find all dependent reads
+  - critical section is minimal section that contains all of them
+- barriers for code reordering: `volatile`{.c}, `asm`{.c}
+- compare and swap
+  - assume atomic
+    ```c
+    bool compare_and_swap(int * addr, int old, int new) {
+      if (*addr == old) {
+        *addr = new;
+        return true;
+      } else {
+        return false;
+      }
+    }
+    ```
+  - expensive code `static int x; x = ef(x)`{.c}
+    - using `compare_and_swap`: 
+      ```c
+      int r, o;
+      do r = ef(o = x);
+      while (!compare_and_swap(&x, o, r));
+      ```
+    - doesnt scale to large objects
+- global lock (coarse grained lock) = bad
+  - want finer grained locks, 1 lock per pipe
+    ```c
+    typedef int lock_t;
+    
+    void lock(lock_t *l) {
+      while (xchgl(1, l));
+    }
+
+    void unlock(lock_t *l) {
+      l = 0;
+    }
+
+    // update struct pipe
+    #define N 512
+    struct pipe {
+      char buf[N];
+      size_t r, w;
+      lock_t l;
+    }
+
+    // usage
+    lock(&p -> l);
+    // critical section
+    unlock(&p -> l);
+    ```
+
+## blocking mutex
+- spin lock will infinitely loop
+- `BLOCKED` bit in process table entry
+  ```c
+  typedef struct {
+    lock_t l;
+    bool acquired;
+    struct pte *waiter; // pte = process table entry
+  } bmutex_t;
+  
+  void acquire(bmutex_t *b)l{
+    for(;;) {
+      lock(&b->l);
+      if (!b->acquired) {
+        b->acquired = true;
+        unlock(&b->l);
+        return;
+      } else {
+        unlock();
+        b->waiter = this_thread;
+        this_thread->next = b->waiter;
+        schedule();
+      }
+    }
+  }
+
+  void release(bmutex_t *b) {
+    lock(&b->l);
+    b->acquired = false;
+    // using while may be beneficial with sophisticated scheduler
+    if (b->waiter) {
+      b->waiter->blocked = false;
+      b->waiter = b->waiter->next;
+    }
+    unlock(&b->l);
+  }
+  ```
+
+## deadlock
+- `sed 's/a/b/' | cat file - | sed 's/c/d/'`{.sh}
+  ```c
+  char buf[1024];
+  fd = open("file", ...);
+  while (read(fd, buf, ...) > 0) {
+    write(1, buf, ...);
+  }
+  while (read(0, buf, ...) > 0) {
+    write(1, buf, ...);
+  }
+  ```
+- why not 
+  ```c
+  while (rw(fd, 1, 1024) > 0);
+  while (rw(0, 1, 1024) > 0);
+  ```
+  - p1: 
+    ```c
+    acquire(input);
+    acquire(output);
+    ```
+  - p2: 
+    ```c
+    acquire(output);
+    acquire(input);
+    ```
+- `copy_file_range()`{.c} avoids deadlock
+- dead lock is a *race condition* w 4 conditions
+  - circular wait
+  - mutual exclusion
+  - no preemption of locks
+  - hold and wait
+- two ways to prevent deadlock
+  - add code to acquire to look for cycles in processes and objects
+    - fail if it would create a cycle
+    - slowdown
+  - lock order
+    - arbitrarily number locks
+    - if need multiple objects, have to acquire them in order
+    - if cannot acquirea lock, release all locks and restart
+- p: 
+  ```c
+  pipe(a);
+  pipe(b);
+  fork();
+  exec("sort");
+  ```
+  - p `write`s and `read`s, `sort` `read`s and deadlocks
+
+## alternate programming strategy (!multithreading)
+- event programming
+  ```c
+  for (;;) {
+    wait for an event E;
+    handle(E); // event handler cannot wait, must finish quickly
+  }
+  ```
+- ~~`read(...);`{.c}~~: `aio_read(...);`{.c}
